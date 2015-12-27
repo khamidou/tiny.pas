@@ -1,2 +1,5 @@
 *.o
 *.swp
+*.ppu
+tiny
+test
