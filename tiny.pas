@@ -34,17 +34,15 @@ const
 { Lexing-related values. }
 var
     yyinput: Text;
+    yyoutput: Text;
     yytext: String;
     yyunreadch: Char;
+    yytoken: Integer;
 
 var
     tok: integer;
 
-function strlen(s: String): integer;
-begin
-    strlen := length(s)
-end;
-
+{ Display a "user-friendly" error message. }
 procedure error(s: String; s2: String);
 begin
     Write('Compilation error: ');
@@ -57,6 +55,20 @@ begin
 
     Writeln('');
     Halt(-1);
+end;
+
+{ Emit a line of assembly. }
+procedure emit(s: String; s2: String);
+begin
+    Write(yyoutput, s);
+
+    if s2 <> '' then
+    begin
+            Write(yyoutput, ', ');
+            Write(yyoutput, s2);
+    end;
+
+    Writeln(yyoutput, '');
 end;
 
 { Get a character from the file. Returns
@@ -85,13 +97,15 @@ end;
 procedure yysetup;
 begin
     yyunreadch := #0;
+    yytoken := 0;
 end;
 
 {
   As far as lexers go, this one is pretty slow because
+
   it reads everything byte-by-byte.
 }
-function yylex: integer;
+function NextToken: integer;
 var
     c: Char;
     fpos: Integer;
@@ -153,6 +167,27 @@ begin
         end;
 end;
 
+function yylex: Integer;
+var
+    token: Integer;
+begin
+    if yytoken = 0 then
+        exit(nextToken());
+    else
+        begin
+            token := yytoken;
+            yytoken := 0
+            exit(token);
+        end;
+end;
+
+procedure yyunread(token: Integer);
+begin
+    yytoken := token
+end;
+
+{ I'm using the Pascal grammar from
+  http://www2.informatik.uni-halle.de/lehre/pascal/sprache/pas_bnf.html }
 procedure pascal_program;
 var
     token: integer;
@@ -169,11 +204,53 @@ begin
     if token <> _SEMICOLON then
         error('expecting semicolon, got: ', yytext);
 
+    code_block();
+
+    token := yylex();
+    if token <> _DOT then
+        error('expecting dot, got: ', yytext);
+
+end;
+
+procedure code_block;
+var
+    token: integer;
+begin
+    token := yylex();
+    if token <> _BEGIN then
+        error('expecting BEGIN statement, got: ', yytext);
+
+    statement_list();
+
+    token := yylex();
+    if token <> _END then
+        error('expecting END statement, got: ', yytext);
+end;
+
+procedure statement_list;
+var
+    token: integer;
+begin
+    token := yylex();
+
+    if token := _IDENTIFIER then
+        expression();
+    else
+        yyunread(token);
+        exit();
+end;
+
+procedure expression;
+var
+    token; integer;
+begin
+    token := yylex();
 end;
 
 begin
     assign(yyinput, 'test.pas');
     reset(yyinput);
+    yysetup();
 
     pascal_program();
     Writeln('Program compiled.');
