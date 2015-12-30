@@ -31,9 +31,11 @@ const
     _FUNCTION = 21;
     _PROCEDURE = 22;
 
+{ Lexing-related values. }
 var
     yyinput: Text;
     yytext: String;
+    yyunreadch: Char;
 
 var
     tok: integer;
@@ -54,6 +56,35 @@ begin
     end;
 
     Writeln('');
+    Halt(-1);
+end;
+
+{ Get a character from the file. Returns
+  yyunreadch if it's defined.
+}
+function Getch: Char;
+var
+    c: Char;
+begin
+    if yyunreadch = #0 then
+        Read(yyinput, c)
+    else
+    begin
+        c := yyunreadch;
+        yyunreadch := #0;
+    end;
+
+    exit(c);
+end;
+
+procedure Ungetc(c: Char);
+begin
+    yyunreadch := c;
+end;
+
+procedure yysetup;
+begin
+    yyunreadch := #0;
 end;
 
 {
@@ -66,7 +97,7 @@ var
     fpos: Integer;
 begin
     yytext := '';
-    Read(yyinput, c);
+    c := Getch();
 
     while True do
     begin
@@ -74,24 +105,24 @@ begin
         if c = '{' then
             begin
                 repeat
-                    Read(yyinput, c);
+                    c := Getch();
                 until (c = '}');
 
-                Read(yyinput, c);
+                c := Getch();
                 continue;
             end
         { #9 and #10 are the Pascal notation for tab and \n, respectively. }
         else if (c = ' ') or (c = #10) or (c = #09) then
             begin
                 repeat
-                    Read(yyinput, c);
+                    c := Getch();
                 until (c <> ' ') and (c <> #10) and (c <> #09);
                 continue;
             end
         else
             break;
 
-        Read(yyinput, c);
+        c := Getch();
     end;
 
     if c = ';' then
@@ -102,13 +133,11 @@ begin
         begin
             repeat
                 yytext := yytext + c;
-                Read(yyinput, c);
+                c := Getch();
             until (c = ' ') or (c = '\n') or (c = '\t') or (c = ';') or (c = '.');
 
-            { We've read one char too much --- rewind the file position
-              one character back.}
-            fpos := Filepos(yyinput);
-            Seek(yyinput, fpos - 1);
+            { If we're here, we've read one character too far. Put it back. }
+            Ungetc(c);
 
             { Convert to lowercase for convenience }
             yytext := Lowercase(yytext);
@@ -138,7 +167,7 @@ begin
 
     token := yylex();
     if token <> _SEMICOLON then
-        error('expecting semicolon, got', yytext);
+        error('expecting semicolon, got: ', yytext);
 
 end;
 
@@ -147,4 +176,5 @@ begin
     reset(yyinput);
 
     pascal_program();
+    Writeln('Program compiled.');
 end.
