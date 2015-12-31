@@ -30,6 +30,8 @@ const
     _DIV = 20;
     _FUNCTION = 21;
     _PROCEDURE = 22;
+    _EQUAL = 23;
+    _ASSIGNMENT = 24;
 
 { Lexing-related values. }
 var
@@ -71,9 +73,7 @@ begin
     Writeln(yyoutput, '');
 end;
 
-{ Get a character from the file. Returns
-  yyunreadch if it's defined.
-}
+{ Get a character from the file. Returns yyunreadch if it's defined. }
 function Getch: Char;
 var
     c: Char;
@@ -102,7 +102,6 @@ end;
 
 {
   As far as lexers go, this one is pretty slow because
-
   it reads everything byte-by-byte.
 }
 function NextToken: integer;
@@ -142,13 +141,21 @@ begin
     if c = ';' then
         exit(_SEMICOLON)
     else if c = '.' then
-        exit(_DOT);
+        exit(_DOT)
+    else if c = ':' then
+        begin
+            c := Getch();
+
+            if c <> '=' then
+                error('expected :=, got ', yytext);
+            exit(_ASSIGNMENT);
+        end;
     if ((c >= 'a') and (c <= 'z')) or ((c >= 'A') and (c <= 'Z'))  then
         begin
             repeat
                 yytext := yytext + c;
                 c := Getch();
-            until (c = ' ') or (c = '\n') or (c = '\t') or (c = ';') or (c = '.');
+            until (c = ' ') or (c = #10) or (c = #09) or (c = ';') or (c = '.');
 
             { If we're here, we've read one character too far. Put it back. }
             Ungetc(c);
@@ -162,6 +169,10 @@ begin
                 exit(_USES)
             else if CompareText(yytext, 'if') = 0 then
                 exit(_IF)
+            else if CompareText(yytext, 'begin') = 0 then
+                exit(_BEGIN)
+            else if CompareText(yytext, 'end') = 0 then
+                exit(_END)
             else
                 exit(_IDENTIFIER);
         end;
@@ -172,12 +183,12 @@ var
     token: Integer;
 begin
     if yytoken = 0 then
-        exit(nextToken());
+        exit(nextToken())
     else
         begin
             token := yytoken;
-            yytoken := 0
-            exit(token);
+            yytoken := 0;
+            exit(token)
         end;
 end;
 
@@ -188,21 +199,33 @@ end;
 
 { I'm using the Pascal grammar from
   http://www2.informatik.uni-halle.de/lehre/pascal/sprache/pas_bnf.html }
+
+procedure pascal_program; Forward;
+procedure code_block; Forward;
+procedure statement_list; Forward;
+procedure expression; Forward;
+
 procedure pascal_program;
 var
     token: integer;
 begin
     token := yylex();
     if token <> _PROGRAM then
-        error('expecting PROGRAM statement, got: ', yytext);
+    begin
+        error('expecting PROGRAM statement, got: ', yytext)
+    end;
 
     token := yylex();
     if token <> _IDENTIFIER then
-        error('expecting identifier, got: ', yytext);
+    begin
+        error('expecting identifier, got: ', yytext)
+    end;
 
     token := yylex();
     if token <> _SEMICOLON then
-        error('expecting semicolon, got: ', yytext);
+    begin
+        error('expecting semicolon, got: ', yytext)
+    end;
 
     code_block();
 
@@ -233,17 +256,30 @@ var
 begin
     token := yylex();
 
-    if token := _IDENTIFIER then
-        expression();
-    else
-        yyunread(token);
-        exit();
+    if token = _IDENTIFIER then
+        begin
+            token := yylex();
+            if token = _ASSIGNMENT then
+                expression()
+            else
+                error('expecting '':='', got: ', yytext);
+        end
+    else if token = _END then
+        begin
+            yyunread(token);
+            exit()
+        end
 end;
 
 procedure expression;
 var
-    token; integer;
+    token: integer;
 begin
+    token := yylex();
+
+    if token <> _NUMBER then
+        error('expecting number, got: ', yytext);
+
     token := yylex();
 end;
 
@@ -253,5 +289,5 @@ begin
     yysetup();
 
     pascal_program();
-    Writeln('Program compiled.');
+    Writeln('Program compiled.')
 end.
