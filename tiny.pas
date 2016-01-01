@@ -218,7 +218,8 @@ end;
 procedure pascal_program; Forward;
 procedure code_block; Forward;
 procedure statement_list; Forward;
-procedure expression; Forward;
+procedure additive_expression; Forward;
+procedure multiplicative_expression; Forward;
 procedure emit(s: String; s2: String); Forward;
 
 procedure pascal_program;
@@ -276,7 +277,7 @@ begin
         begin
             token := yylex();
             if token = _ASSIGNMENT then
-                expression()
+                additive_expression()
             else
                 error('expecting '':='', got: ', yytext);
         end
@@ -287,20 +288,13 @@ begin
         end
 end;
 
-procedure expression;
+procedure additive_expression;
 var
     token: integer;
 begin
-    token := yylex();
-
-    if token <> _NUMBER then
-        error('expecting number, got: ', yytext);
-
-    Emit('mov rax', yytext);
-    Emit('push rax', '');
+    multiplicative_expression();
 
     token := yylex();
-
     { The user typed a single number. Return. }
     if (token = _SEMICOLON) or (token = _END) then
         begin
@@ -308,9 +302,9 @@ begin
             exit()
         end;
 
-    if (token = _PLUS) or (token = _MINUS) or (token = _MULT) or (token = _DIV) then
+    if (token = _PLUS) or (token = _MINUS) then
         begin
-            expression();
+            additive_expression();
 
             Emit('pop rbx', '');
             Emit('pop rax', '');
@@ -318,14 +312,44 @@ begin
             if token = _PLUS then
                 Emit('add rax, rbx', '')
             else if token = _MINUS then
-                Emit('sub rax, rbx', '')
-            else if token = _MULT then
-                Emit('imul rax, rbx', '');
-            { Fixme --- figure out division }
+                Emit('sub rax, rbx', '');
 
-            { Don't forget to pop the data back onto the stack }
+            { Don't forget to push the result back on the stack }
             Emit('push rax', '')
-        end;
+        end
+    else
+        Error('unexpected token ', yytext)
+
+end;
+
+procedure multiplicative_expression;
+var
+    token: integer;
+begin
+    token := yylex();
+
+    if token <> _NUMBER then
+        Error('expecting number, got:', yytext);
+
+    Emit('mov rax', yytext);
+    Emit('push rax', '');
+
+    token := yylex();
+
+    { The user typed a single number. Return. }
+    if token = _MULT then
+        begin
+            multiplicative_expression();
+            Emit('pop rbx', '');
+            Emit('pop rax', '');
+            Emit('imul rax, rbx', '');
+            Emit('push rax', '');
+        end
+    else
+        begin
+            yyunread(token);
+            exit()
+        end
 end;
 
 procedure emit_assembly_header;
@@ -347,7 +371,7 @@ begin
     Writeln('    mov rax, 0x2000001');
     Writeln('    mov rdi, 0');
     Writeln('    syscall');
-    Writeln('; over and out')
+    Writeln('; Over and out')
 end;
 
 { Emit a line of assembly. }

@@ -2,5 +2,5 @@
 program test;
 
 begin
-    var1 := 2 + 3 * 5
+    var1 := 2 + 3 * 5 - 3
 end.
