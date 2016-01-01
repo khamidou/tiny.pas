@@ -297,6 +297,7 @@ begin
         error('expecting number, got: ', yytext);
 
     Emit('mov rax', yytext);
+    Emit('push rax', '');
 
     token := yylex();
 
@@ -309,24 +310,50 @@ begin
 
     if (token = _PLUS) or (token = _MINUS) or (token = _MULT) or (token = _DIV) then
         begin
-            expression()
+            expression();
+
+            Emit('pop rbx', '');
+            Emit('pop rax', '');
+
+            if token = _PLUS then
+                Emit('add rax, rbx', '')
+            else if token = _MINUS then
+                Emit('sub rax, rbx', '')
+            else if token = _MULT then
+                Emit('imul rax, rbx', '');
+            { Fixme --- figure out division }
+
+            { Don't forget to pop the data back onto the stack }
+            Emit('push rax', '')
         end;
 end;
 
 procedure emit_assembly_header;
 begin
     Writeln('; On MacOS X use something like /usr/local/bin/nasm -f macho64 file.asm && ld -macosx_version_min 10.7.0 -lSystem -o file file.o && ./file');
-    Writeln('; to compile. You may need to get nasm from homebrew.')
+    Writeln('; to compile. You may need to get nasm from homebrew.');
+    Writeln('global start');
+    Writeln('');
+    Writeln('section .text');
+    Writeln('start:');
+    Writeln('; setup the stack');
+    Writeln('    push rbp');
+    Writeln('    mov rbp, rsp');
 end;
 
 procedure emit_assembly_footer;
 begin
+    Writeln('    ; call MacOS'' exit routine');
+    Writeln('    mov rax, 0x2000001');
+    Writeln('    mov rdi, 0');
+    Writeln('    syscall');
     Writeln('; over and out')
 end;
 
 { Emit a line of assembly. }
 procedure emit(s: String; s2: String);
 begin
+    Write('    ');
     Write(s);
 
     if s2 <> '' then
