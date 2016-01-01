@@ -32,6 +32,8 @@ const
     _PROCEDURE = 22;
     _EQUAL = 23;
     _ASSIGNMENT = 24;
+    _LESS_THAN = 25;
+    _MORE_THAN = 26;
 
 { Lexing-related values. }
 var
@@ -47,6 +49,7 @@ var
 { Display a "user-friendly" error message. }
 procedure error(s: String; s2: String);
 begin
+    Write('[0;31;40m');
     Write('Compilation error: ');
     Write(s);
 
@@ -55,22 +58,14 @@ begin
         Write(s2)
     end;
 
-    Writeln('');
+    Writeln('[0;37;40m');
     Halt(-1);
 end;
 
-{ Emit a line of assembly. }
-procedure emit(s: String; s2: String);
+procedure yysetup;
 begin
-    Write(yyoutput, s);
-
-    if s2 <> '' then
-    begin
-            Write(yyoutput, ', ');
-            Write(yyoutput, s2);
-    end;
-
-    Writeln(yyoutput, '');
+    yyunreadch := #0;
+    yytoken := 0;
 end;
 
 { Get a character from the file. Returns yyunreadch if it's defined. }
@@ -94,12 +89,6 @@ begin
     yyunreadch := c;
 end;
 
-procedure yysetup;
-begin
-    yyunreadch := #0;
-    yytoken := 0;
-end;
-
 {
   As far as lexers go, this one is pretty slow because
   it reads everything byte-by-byte.
@@ -108,6 +97,7 @@ function NextToken: integer;
 var
     c: Char;
     fpos: Integer;
+    s: String; { Temporary string }
 begin
     yytext := '';
     c := Getch();
@@ -142,16 +132,40 @@ begin
         exit(_SEMICOLON)
     else if c = '.' then
         exit(_DOT)
+    else if c = '+' then
+        exit(_PLUS)
+    else if c = '-' then
+        exit(_MINUS)
+    else if c = '*' then
+        exit(_MULT)
+    else if c = '/' then
+        exit(_DIV)
     else if c = ':' then
         begin
             c := Getch();
 
             if c <> '=' then
                 error('expected :=, got ', yytext);
-            exit(_ASSIGNMENT);
-        end;
-    if ((c >= 'a') and (c <= 'z')) or ((c >= 'A') and (c <= 'Z'))  then
+
+            exit(_ASSIGNMENT)
+        end
+    else if (c >= '0') and (c <= '9') then
         begin
+            yytext := '';
+
+            repeat
+                yytext := yytext + c;
+                c := Getch()
+            until (c < '0') or (c > '9');
+
+            { We've read one character too many. Put it back. }
+            Ungetc(c);
+            exit(_NUMBER);
+
+        end
+    else if ((c >= 'a') and (c <= 'z')) or ((c >= 'A') and (c <= 'Z'))  then
+        begin
+
             repeat
                 yytext := yytext + c;
                 c := Getch();
@@ -183,13 +197,14 @@ var
     token: Integer;
 begin
     if yytoken = 0 then
-        exit(nextToken())
+        token := nextToken()
     else
         begin
             token := yytoken;
             yytoken := 0;
-            exit(token)
         end;
+
+    exit(token)
 end;
 
 procedure yyunread(token: Integer);
@@ -204,6 +219,7 @@ procedure pascal_program; Forward;
 procedure code_block; Forward;
 procedure statement_list; Forward;
 procedure expression; Forward;
+procedure emit(s: String; s2: String); Forward;
 
 procedure pascal_program;
 var
@@ -280,14 +296,57 @@ begin
     if token <> _NUMBER then
         error('expecting number, got: ', yytext);
 
+    Emit('mov rax', yytext);
+
     token := yylex();
+
+    { The user typed a single number. Return. }
+    if (token = _SEMICOLON) or (token = _END) then
+        begin
+            yyunread(token);
+            exit()
+        end;
+
+    if (token = _PLUS) or (token = _MINUS) or (token = _MULT) or (token = _DIV) then
+        begin
+            expression()
+        end;
 end;
 
+procedure emit_assembly_header;
 begin
-    assign(yyinput, 'test.pas');
+    Writeln('; On MacOS X use something like /usr/local/bin/nasm -f macho64 file.asm && ld -macosx_version_min 10.7.0 -lSystem -o file file.o && ./file');
+    Writeln('; to compile. You may need to get nasm from homebrew.')
+end;
+
+procedure emit_assembly_footer;
+begin
+    Writeln('; over and out')
+end;
+
+{ Emit a line of assembly. }
+procedure emit(s: String; s2: String);
+begin
+    Write(s);
+
+    if s2 <> '' then
+    begin
+            Write(', ');
+            Write(s2);
+    end;
+
+    Writeln('');
+end;
+
+
+begin
+    assign(yyinput, ParamStr(1));
     reset(yyinput);
     yysetup();
 
+    emit_assembly_header;
+
     pascal_program();
-    Writeln('Program compiled.')
+
+    emit_assembly_footer;
 end.
